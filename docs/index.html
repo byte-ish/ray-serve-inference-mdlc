@@ -1,0 +1,1072 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Serve for Inference in the MDLC</title>
+<meta name="description" content="Where Ray Serve fits, and does not fit, in an enterprise model development life cycle">
+<meta name="color-scheme" content="light dark">
+<style>
+:root{
+  --paper:#F3F5F4; --card:#FFF; --ink:#16211E; --muted:#54615C; --faint:#87918D;
+  --rule:#D9DFDC; --rule-strong:#BFC8C4; --a:#0E5C50; --a-soft:#0E5C5014;
+  --warn:#8A6D1F; --warn-soft:#8A6D1F16; --ok-soft:#0E5C5016; --code-bg:#EAEFEC;
+  --serif:'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,serif;
+  --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#111614;--card:#171E1B;--ink:#E7EDEA;--muted:#A2ACA8;--faint:#78837F;
+  --rule:#26302C;--rule-strong:#35413C;--a:#4FB3A0;--a-soft:#4FB3A016;
+  --warn:#D2A945;--warn-soft:#D2A94518;--ok-soft:#4FB3A018;--code-bg:#1D2522;}}
+:root[data-theme="dark"]{
+  --paper:#111614;--card:#171E1B;--ink:#E7EDEA;--muted:#A2ACA8;--faint:#78837F;
+  --rule:#26302C;--rule-strong:#35413C;--a:#4FB3A0;--a-soft:#4FB3A016;
+  --warn:#D2A945;--warn-soft:#D2A94518;--ok-soft:#4FB3A018;--code-bg:#1D2522;}
+:root[data-theme="light"]{
+  --paper:#F3F5F4;--card:#FFF;--ink:#16211E;--muted:#54615C;--faint:#87918D;
+  --rule:#D9DFDC;--rule-strong:#BFC8C4;--a:#0E5C50;--a-soft:#0E5C5014;
+  --warn:#8A6D1F;--warn-soft:#8A6D1F16;--ok-soft:#0E5C5016;--code-bg:#EAEFEC;}
+
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;scroll-padding-top:28px;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+  font-size:16.5px;line-height:1.72;-webkit-font-smoothing:antialiased;}
+
+.masthead{border-bottom:1px solid var(--rule);background:var(--card);}
+.masthead .inner{max-width:1280px;margin:0 auto;padding:36px 32px 32px;
+  display:flex;flex-direction:column;gap:12px;}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint);font-weight:600;}
+.masthead h1{font-family:var(--serif);font-weight:600;margin:0;
+  font-size:clamp(27px,3.6vw,40px);line-height:1.12;letter-spacing:-.015em;text-wrap:balance;}
+.masthead .sub{color:var(--muted);max-width:68ch;margin:0;font-size:17px;line-height:1.6;}
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
+.badge{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  font-weight:600;padding:4px 9px;border-radius:2px;background:var(--a-soft);color:var(--a);}
+.badge.n{background:transparent;color:var(--muted);border:1px solid var(--rule-strong);}
+
+.shell{max-width:1280px;margin:0 auto;padding:0 32px;display:grid;
+  grid-template-columns:262px minmax(0,1fr);gap:56px;align-items:start;}
+@media (max-width:1000px){.shell{grid-template-columns:1fr;gap:0;padding:0 20px;}}
+
+nav.toc{position:sticky;top:0;max-height:100vh;overflow-y:auto;padding:36px 0 40px;
+  display:flex;flex-direction:column;gap:1px;}
+@media (max-width:1000px){nav.toc{position:static;max-height:none;
+  border-bottom:1px solid var(--rule);margin-bottom:10px;padding-bottom:22px;}}
+nav.toc .toc-lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:10px;}
+nav.toc a{display:block;text-decoration:none;color:var(--muted);font-size:13.5px;
+  line-height:1.45;padding:5px 10px;border-left:2px solid transparent;}
+nav.toc a:hover{color:var(--ink);background:var(--a-soft);}
+nav.toc a.t3{padding-left:24px;font-size:12.5px;color:var(--faint);}
+nav.toc a.active{color:var(--a);border-left-color:var(--a);font-weight:600;background:var(--a-soft);}
+
+main{padding:36px 0 110px;min-width:0;max-width:74ch;}
+main h1{display:none;}
+main h2{font-family:var(--serif);font-size:clamp(22px,2.6vw,28px);line-height:1.22;
+  font-weight:600;margin:54px 0 18px;padding-top:18px;border-top:2px solid var(--ink);
+  text-wrap:balance;}
+main h2:first-of-type{margin-top:0;}
+main h3{font-family:var(--serif);font-size:19.5px;font-weight:600;margin:38px 0 12px;
+  line-height:1.32;text-wrap:balance;}
+main p{margin:0 0 17px;}
+main em{color:var(--muted);}
+
+main ul,main ol{margin:0 0 20px;padding-left:0;}
+main ul{list-style:none;}
+main ul>li{position:relative;padding-left:22px;}
+main ul>li::before{content:"";position:absolute;left:6px;top:.72em;width:5px;height:5px;
+  border-radius:50%;background:var(--rule-strong);}
+main ol{padding-left:30px;}
+main ol>li{padding-left:6px;}
+main ol>li::marker{color:var(--faint);font-family:var(--mono);font-size:.86em;font-weight:600;}
+main li{margin-bottom:9px;line-height:1.68;}
+main li>ul,main li>ol{margin:9px 0 4px;}
+
+main hr{border:none;border-top:1px solid var(--rule);margin:38px 0;}
+main a{color:var(--a);text-decoration:underline;text-underline-offset:2.5px;
+  text-decoration-color:var(--rule-strong);}
+main a:hover{text-decoration-color:var(--a);}
+
+main blockquote{margin:0 0 22px;padding:16px 20px;border-left:3px solid var(--a);
+  background:var(--a-soft);border-radius:0 3px 3px 0;}
+main blockquote>*:last-child{margin-bottom:0;}
+
+a.cite{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:600;
+  line-height:1;vertical-align:super;padding:2px 4px;margin:0 1px;border-radius:2px;
+  background:var(--a-soft);color:var(--a);text-decoration:none;}
+a.cite:hover{background:var(--a);color:var(--paper);}
+
+.tag{font-family:var(--mono);font-size:10.5px;font-weight:600;padding:2px 6px;
+  border-radius:2px;white-space:nowrap;}
+.tag.t-ok{background:var(--ok-soft);color:var(--a);}
+.tag.t-warn{background:var(--warn-soft);color:var(--warn);}
+.tag.t-soft{background:transparent;color:var(--faint);border:1px solid var(--rule-strong);}
+.rate{white-space:nowrap;letter-spacing:.09em;color:var(--a);font-size:.95em;cursor:help;}
+
+ol.sources{padding-left:34px;}
+ol.sources>li{margin-bottom:12px;line-height:1.6;font-size:15px;padding-left:4px;}
+ol.sources a{overflow-wrap:anywhere;}
+ol.sources>li:target{background:var(--a-soft);outline:2px solid var(--a);outline-offset:5px;}
+
+code{font-family:var(--mono);font-size:.855em;background:var(--code-bg);
+  padding:1.5px 5px;border-radius:2px;overflow-wrap:anywhere;}
+pre{background:var(--card);border:1px solid var(--rule);border-radius:3px;
+  padding:16px 18px;overflow-x:auto;margin:0 0 20px;line-height:1.55;}
+pre code{background:none;padding:0;font-size:12.5px;}
+
+.tw{overflow-x:auto;border:1px solid var(--rule);border-radius:3px;margin:0 0 22px;
+  background:var(--card);}
+table{border-collapse:collapse;width:100%;font-size:13.5px;line-height:1.55;}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--rule);vertical-align:top;}
+thead th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);font-weight:600;background:var(--paper);white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:var(--a-soft);}
+td{font-variant-numeric:tabular-nums;}
+td:first-child{font-weight:550;}
+
+.anchor{margin-left:9px;color:var(--rule-strong);text-decoration:none;font-family:var(--mono);
+  font-size:.62em;opacity:0;transition:opacity .12s;}
+h2:hover .anchor,h3:hover .anchor,.anchor:focus{opacity:1;}
+.anchor:hover{color:var(--a);}
+
+footer{border-top:1px solid var(--rule);margin-top:60px;padding-top:22px;font-size:13.5px;
+  color:var(--faint);display:flex;flex-direction:column;gap:9px;}
+footer a{color:var(--a);}
+a:focus-visible{outline:2px solid var(--a);outline-offset:3px;}
+
+.totop{position:fixed;right:22px;bottom:22px;background:var(--card);color:var(--muted);
+  border:1px solid var(--rule-strong);border-radius:3px;padding:9px 13px;font-size:12px;
+  font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;text-decoration:none;
+  opacity:0;pointer-events:none;transition:opacity .18s;}
+.totop.on{opacity:1;pointer-events:auto;}
+.totop:hover{color:var(--a);border-color:var(--a);}
+
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;}*{transition:none!important;}}
+@media print{nav.toc,.totop{display:none;}.shell{grid-template-columns:1fr;}main{max-width:none;}}
+</style>
+</head>
+<body>
+<header class="masthead"><div class="inner">
+  <span class="eyebrow">Research &amp; reference</span>
+  <h1>Ray Serve for Inference in the MDLC</h1>
+  <p class="sub">Where Ray Serve fits, and does not fit, in an enterprise model development life cycle</p>
+  <div class="badges">
+    <span class="badge">Ray 2.57.0</span>
+    <span class="badge n">KubeRay v1.6.2</span>
+    <span class="badge n">33 sources</span>
+    <span class="badge n">Aug 2026</span>
+  </div>
+</div></header>
+<div class="shell">
+  <nav class="toc" aria-label="Contents">
+    <span class="toc-lbl">Contents</span>
+    <a class="t2" href="#key-takeaways">Key takeaways</a>
+<a class="t2" href="#reading-guide">Reading guide</a>
+<a class="t2" href="#1-executive-summary">1. Executive summary</a>
+<a class="t2" href="#2-what-ray-serve-is-precisely">2. What Ray Serve is, precisely</a>
+<a class="t3" href="#21-request-lifecycle">2.1 Request lifecycle</a>
+<a class="t3" href="#22-fault-tolerance-honestly-stated">2.2 Fault tolerance, honestly stated</a>
+<a class="t2" href="#3-mdlc-mapping">3. MDLC mapping</a>
+<a class="t3" href="#31-stage-4-independent-validation">3.1 Stage 4: independent validation</a>
+<a class="t3" href="#32-stage-6-packaging-and-versioning">3.2 Stage 6: packaging and versioning</a>
+<a class="t3" href="#33-stage-7-deployment-and-release-on-a-cloud-platform">3.3 Stage 7: deployment and release on a cloud platform</a>
+<a class="t3" href="#34-stage-8-the-serving-runtime-capability-set">3.4 Stage 8: the serving runtime capability set</a>
+<a class="t3" href="#35-llm-serving-specifics">3.5 LLM serving specifics</a>
+<a class="t3" href="#36-autoscaling-and-capacity-the-parameters-that-decide-your-bill">3.6 Autoscaling and capacity: the parameters that decide your bill</a>
+<a class="t3" href="#37-stage-9-monitoring">3.7 Stage 9: monitoring</a>
+<a class="t2" href="#4-cloud-reference-architecture">4. Cloud reference architecture</a>
+<a class="t2" href="#5-failure-modes-and-operational-gotchas">5. Failure modes and operational gotchas</a>
+<a class="t2" href="#6-what-ray-serve-does-not-give-you">6. What Ray Serve does not give you</a>
+<a class="t2" href="#7-suggested-adoption-path">7. Suggested adoption path</a>
+<a class="t2" href="#8-questions-to-answer-before-adopting">8. Questions to answer before adopting</a>
+<a class="t2" href="#9-scope-and-limitations">9. Scope and limitations</a>
+<a class="t2" href="#10-sources">10. Sources</a>
+  </nav>
+  <main>
+<h1 id="ray-serve-for-inference-in-the-model-development-life-cycle">Ray Serve for Inference in the Model Development Life Cycle</h1>
+<p>A research and reference document on where Ray Serve fits, and does not fit, in an enterprise MDLC, for teams deploying on a cloud platform.</p>
+<div class="tw"><table>
+<tbody>
+<tr>
+<td><strong>Scope</strong></td>
+<td>Ray Serve as an online inference layer, mapped stage by stage onto the Model Development Life Cycle. Cloud deployment via managed Kubernetes.</td>
+</tr>
+<tr>
+<td><strong>Verdict</strong></td>
+<td>Strongest fit for <em>compositional</em> inference (multi-model pipelines, RAG, agentic flows) and LLM serving on self-owned accelerators. Over-engineered for a fleet of single-model, tensor-in/tensor-out endpoints.</td>
+</tr>
+<tr>
+<td><strong>Confidence</strong></td>
+<td>Moderate. Every claim is documentation-derived or vendor-published. <strong>Nothing here has been executed:</strong> no cluster stood up, no benchmark reproduced. See <a href="#9-scope-and-limitations">Scope and limitations</a>.</td>
+</tr>
+<tr>
+<td><strong>Versions</strong></td>
+<td>Ray <strong>2.57.0</strong> (latest stable on PyPI, released 2026-08-11), KubeRay <strong>v1.6.2</strong></td>
+</tr>
+<tr>
+<td><strong>Researched</strong></td>
+<td>2026-08-12, fact-checked 2026-08-13</td>
+</tr>
+<tr>
+<td><strong>Shelf life</strong></td>
+<td>Short. Several load-bearing capabilities landed in Ray 2.51 to 2.56. Re-verify anything version-gated after roughly two quarters.</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="key-takeaways">Key takeaways<a class="anchor" href="#key-takeaways" aria-label="Link to this section">#</a></h2>
+<ol type="1">
+<li><strong>Ray Serve owns serving, not the lifecycle.</strong> The Ray docs state plainly that it is not a full ML platform and lacks model lifecycle management and performance visualisation. Registry, lineage, validation evidence, drift monitoring, and CI/CD are all yours to supply. An MDLC that assumes "we have Ray Serve, therefore we have model monitoring" fails its first validation review.</li>
+<li><strong>The differentiator is composition, not raw serving throughput.</strong> Arbitrary Python in the request path plus independently-scaled deployments joined by <code>DeploymentHandle</code> means a preprocessing/model/postprocessing pipeline is one deployable unit where each node scales on its own bottleneck. If your workload is not compositional, most of the reason to accept Ray's operational cost goes unused.</li>
+<li><strong>Upgrade economics are the sharpest adoption risk.</strong> Changing anything in <code>rayClusterConfig</code>, including the container image, triggers a blue-green that needs roughly 200% of cluster compute. The efficient alternative, <code>NewClusterWithIncrementalUpgrade</code>, is <strong>alpha in KubeRay v1.5.1</strong> behind a feature gate and needs Gateway API plus a controller the docs say is primarily tested with Istio.</li>
+<li><strong>Ray 2.56 invalidated older benchmarks.</strong> The throughput path replaced Python-runtime proxy routing with HAProxy, added direct token streaming, and moved Ray out of vLLM's data plane. If your team measured a Ray Serve orchestration tax before 2.56, that measurement is stale.</li>
+<li><strong>Two governance edges are specific to Ray Serve.</strong> <code>user_config</code> hot-reloads without restarting replicas, so a validated decision threshold can change with no image change and no deploy record. And model multiplexing shares one process across many models, making tenant isolation logical rather than physical.</li>
+</ol>
+<h2 id="reading-guide">Reading guide<a class="anchor" href="#reading-guide" aria-label="Link to this section">#</a></h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>If you want</th>
+<th>Read</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The architecture in ten minutes</td>
+<td><a href="#2-what-ray-serve-is-precisely">§2 What Ray Serve is, precisely</a></td>
+</tr>
+<tr>
+<td>Where it touches your lifecycle and governance</td>
+<td><a href="#3-mdlc-mapping">§3 MDLC mapping</a></td>
+</tr>
+<tr>
+<td>Capacity planning and what drives the bill</td>
+<td><a href="#36-autoscaling-and-capacity-the-parameters-that-decide-your-bill">§3.6 Autoscaling and capacity</a></td>
+</tr>
+<tr>
+<td>A deployment topology to copy</td>
+<td><a href="#4-cloud-reference-architecture">§4 Cloud reference architecture</a></td>
+</tr>
+<tr>
+<td>What will go wrong first</td>
+<td><a href="#5-failure-modes-and-operational-gotchas">§5 Failure modes</a></td>
+</tr>
+<tr>
+<td>What you must build yourself</td>
+<td><a href="#6-what-ray-serve-does-not-give-you">§6 What Ray Serve does not give you</a></td>
+</tr>
+<tr>
+<td>How far to trust this document</td>
+<td><a href="#9-scope-and-limitations">§9 Scope and limitations</a></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Provenance convention.</strong> Claims are either (a) <strong>documented</strong>, traceable to a specific Ray or KubeRay page listed in <a href="#10-sources">§10</a>; (b) <strong>vendor-benchmarked</strong>, from an Anyscale or cloud-provider blog with the benchmark conditions stated so you can judge transfer; or (c) <strong>judgment</strong>, explicitly marked. Anything unmarked is (a). See <a href="#9-scope-and-limitations">§9</a> for what that does and does not buy you.</p>
+<h2 id="1-executive-summary">1. Executive summary<a class="anchor" href="#1-executive-summary" aria-label="Link to this section">#</a></h2>
+<p>Ray Serve is a <strong>Python-native, framework-agnostic online inference layer</strong> built on Ray actors. It is not an ML platform and does not pretend to be one. The Ray docs themselves state it lacks model lifecycle management and model performance visualisation. That boundary is the single most important fact for an MDLC conversation: Ray Serve owns <strong>serving</strong>, and you must supply registry, lineage, validation evidence, drift monitoring, and CI/CD around it.</p>
+<p>What it is unusually good at, relative to conventional model servers:</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Strength</th>
+<th>Why it matters in the MDLC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Arbitrary Python in the serving path</strong></td>
+<td>Pre/post-processing, business rules, feature lookups, and multi-model ensembles live in the same deployable unit as the model. No sidecar transformer, no separate orchestration service. Removes the classic train/serve skew where preprocessing is reimplemented in the serving tier.</td>
+</tr>
+<tr>
+<td><strong>Model composition via <code>DeploymentHandle</code></strong></td>
+<td>A pipeline of models is a graph of independently-scaled, independently-resourced deployments in one application. Each node scales on its own bottleneck.</td>
+</tr>
+<tr>
+<td><strong>Heterogeneous and fractional resources</strong></td>
+<td>CPU pre-processing replicas and GPU model replicas in one app; <code>num_gpus=0.25</code> packs small models onto one accelerator. Directly attacks GPU under-utilisation, the dominant inference cost line.</td>
+</tr>
+<tr>
+<td><strong>First-class LLM support</strong></td>
+<td><code>ray.serve.llm</code> wraps vLLM and SGLang with OpenAI-compatible endpoints, tensor and pipeline parallelism, multi-LoRA multiplexing, prefix-cache-aware routing, and prefill/decode disaggregation.</td>
+</tr>
+<tr>
+<td><strong>One runtime for training, batch, and online</strong></td>
+<td>Ray Data, Ray Train, and Ray Serve share a cluster abstraction, so the offline-scoring code used in validation and the online code used in production can be the same Python.</td>
+</tr>
+</tbody>
+</table></div>
+<p>The main costs: <strong>you own a Ray cluster</strong>, since the control plane is Ray actors rather than Kubernetes primitives; the debugging surface is distributed Python; and the release and rollback story depends on KubeRay maturity rather than on the Deployments and ReplicaSets your platform team already understands.</p>
+<h2 id="2-what-ray-serve-is-precisely">2. What Ray Serve is, precisely<a class="anchor" href="#2-what-ray-serve-is-precisely" aria-label="Link to this section">#</a></h2>
+<ul>
+<li><strong>A library, not a service.</strong> <code>pip install "ray[serve]"</code>. You write Python classes, decorate them, and run them on a Ray cluster.</li>
+<li><strong>Deployment:</strong> the unit of scaling. A decorated class or function, replicated N times as Ray actors, each with its own resource request.</li>
+<li><strong>Application:</strong> a graph of deployments with one <strong>ingress</strong> deployment, bound to a route prefix. The unit of deploy, upgrade, and version.</li>
+<li><strong>Replica:</strong> one actor executing user code. Maintains its own request queue; <code>async def</code> handlers give concurrency within a replica.</li>
+<li><strong>Proxy:</strong> HTTP, and optionally gRPC, entry point. One per node when <code>proxy_location: EveryNode</code>.</li>
+<li><strong>Controller:</strong> one global actor owning the control plane. Creates, updates, and destroys replicas and proxies, runs the autoscaler, and checkpoints state to the Ray GCS.</li>
+</ul>
+<h3 id="21-request-lifecycle">2.1 Request lifecycle<a class="anchor" href="#21-request-lifecycle" aria-label="Link to this section">#</a></h3>
+<ol type="1">
+<li>Request hits a proxy (Uvicorn-based by default; HAProxy from 2.56, see <a href="#35-llm-serving-specifics">§3.5</a>).</li>
+<li>Proxy resolves route prefix to the application ingress deployment.</li>
+<li>Router selects a replica using <strong>power-of-two-choices</strong>, respecting <code>max_ongoing_requests</code>. If all replicas are at their limit, the request queues at the router.</li>
+<li>Replica executes. Optionally <code>@serve.batch</code> coalesces concurrent calls into one vectorised forward pass.</li>
+<li>Ingress may call downstream deployments via <code>DeploymentHandle</code>, using the same routing and batching logic, but <strong>bypassing the external proxy</strong> through in-cluster actor calls, or a gRPC data plane when throughput mode is on.</li>
+<li>Response returns, streaming token by token if the handler is a generator.</li>
+</ol>
+<h3 id="22-fault-tolerance-honestly-stated">2.2 Fault tolerance, honestly stated<a class="anchor" href="#22-fault-tolerance-honestly-stated" aria-label="Link to this section">#</a></h3>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Failure</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Replica actor dies</td>
+<td>Controller replaces it.</td>
+</tr>
+<tr>
+<td>Proxy actor dies</td>
+<td>Controller restarts it.</td>
+</tr>
+<tr>
+<td>Controller dies</td>
+<td>Ray restarts it; state recovered from GCS checkpoint.</td>
+</tr>
+<tr>
+<td>In-flight requests during any of the above</td>
+<td><strong>Lost.</strong> Transient state such as sockets and partial responses is not recovered.</td>
+</tr>
+<tr>
+<td>Head node or whole cluster dies</td>
+<td><strong>Not recoverable by Ray Serve alone.</strong> This is the argument for KubeRay: the <code>RayService</code> CR is what rebuilds the cluster and re-deploys the app.</td>
+</tr>
+</tbody>
+</table></div>
+<p>That last row is why running Ray Serve in production without Kubernetes is a decision to make only for a low-tier workload.</p>
+<h2 id="3-mdlc-mapping">3. MDLC mapping<a class="anchor" href="#3-mdlc-mapping" aria-label="Link to this section">#</a></h2>
+<p>Using an enterprise MDLC framing (development, independent validation, approval, deployment, ongoing monitoring, retirement), here is where Ray Serve is load-bearing, incidental, or absent.</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>MDLC stage</th>
+<th>Ray Serve role</th>
+<th>What you must supply</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Problem framing, feasibility</td>
+<td><strong>None</strong></td>
+<td>n/a</td>
+</tr>
+<tr>
+<td>2. Data and feature engineering</td>
+<td>Incidental (Ray Data is a sibling, not Serve)</td>
+<td>Feature store or pipeline</td>
+</tr>
+<tr>
+<td>3. Model development and training</td>
+<td>Incidental (Ray Train)</td>
+<td>Experiment tracking</td>
+</tr>
+<tr>
+<td>4. <strong>Independent validation</strong></td>
+<td><strong>Supporting.</strong> Stand up the <em>candidate</em> behind an endpoint, or score a validation set through the exact serving code path</td>
+<td>Validation harness, challenger comparison, evidence capture</td>
+</tr>
+<tr>
+<td>5. Approval and documentation</td>
+<td><strong>None</strong></td>
+<td>Model risk documentation, sign-off workflow</td>
+</tr>
+<tr>
+<td>6. <strong>Packaging and versioning</strong></td>
+<td><strong>Partial.</strong> <code>serve build</code> config, container image, <code>runtime_env</code></td>
+<td>Model registry as source of truth; image build pipeline</td>
+</tr>
+<tr>
+<td>7. <strong>Deployment and release</strong></td>
+<td><strong>Core.</strong> <code>RayService</code> CR, canary and incremental upgrade, blue-green</td>
+<td>GitOps, approval gates, promotion pipeline</td>
+</tr>
+<tr>
+<td>8. <strong>Serving and runtime</strong></td>
+<td><strong>Core.</strong> Autoscaling, batching, multiplexing, composition, LLM engines</td>
+<td>Ingress, authn/z, rate limiting, quotas</td>
+</tr>
+<tr>
+<td>9. <strong>Monitoring</strong></td>
+<td><strong>Partial.</strong> Rich operational telemetry, no model-quality telemetry</td>
+<td>Drift and performance monitoring, ground-truth join, alerting on model metrics</td>
+</tr>
+<tr>
+<td>10. Retraining and challenger promotion</td>
+<td><strong>Supporting.</strong> Shadow and A/B traffic patterns</td>
+<td>Orchestrator, decision rules</td>
+</tr>
+<tr>
+<td>11. Retirement</td>
+<td><strong>Partial.</strong> Delete app, or scale to zero</td>
+<td>Decommissioning evidence, archive</td>
+</tr>
+</tbody>
+</table></div>
+<p>The load-bearing stages are <strong>6 through 10</strong>. Everything below drills into those.</p>
+<hr />
+<h3 id="31-stage-4-independent-validation">3.1 Stage 4: independent validation<a class="anchor" href="#31-stage-4-independent-validation" aria-label="Link to this section">#</a></h3>
+<p>The property that matters here: <strong>the serving code path can be exercised offline</strong>. <code>serve.run()</code> returns a <code>DeploymentHandle</code>, so a validator can drive the <em>deployed graph</em> in-process without HTTP:</p>
+<pre class="python"><code>import ray
+from ray import serve
+from my_app import build_app
+
+handle = serve.run(build_app(model_uri=&quot;registry://fraud-scorer/17&quot;), blocking=False)
+
+# Same code path production traffic takes: preprocessing, composition, postprocessing.
+results = ray.get([handle.remote(row) for row in validation_frame])</code></pre>
+<p>Why this is worth writing down in a validation report: it eliminates the "the validator tested the pickle, production runs a different preprocessing branch" finding. The artefact under validation is the <em>application</em>, not the model file.</p>
+<p>For validation-set scoring at volume, drive the same handle from Ray Data so the scoring job scales across the cluster, or use Ray Data's own batch-inference path if you do not need the serving wrapper.</p>
+<p><strong>Latency and throughput evidence</strong> for the approval pack should be generated against a cluster shaped like production, meaning the same accelerator SKU, replica count, and <code>max_ongoing_requests</code>. It should report p50/p95/p99, plus TTFT and inter-token latency for LLMs. Ray Serve exposes these as Prometheus histograms (<a href="#37-stage-9-monitoring">§3.7</a>), so the evidence is a Grafana export rather than a bespoke load-test harness.</p>
+<hr />
+<h3 id="32-stage-6-packaging-and-versioning">3.2 Stage 6: packaging and versioning<a class="anchor" href="#32-stage-6-packaging-and-versioning" aria-label="Link to this section">#</a></h3>
+<p>Three artefacts define a deployable version. Treat all three as versioned inputs, and record all three in the model risk documentation.</p>
+<p><strong>(a) The container image.</strong> Python, CUDA, framework, and app code. Baked, tagged, immutable.</p>
+<p><strong>(b) The Serve config</strong> (<code>serve build my_module:app -o serve_config.yaml</code>):</p>
+<pre class="yaml"><code>proxy_location: EveryNode
+http_options:
+  host: 0.0.0.0
+  port: 8000
+applications:
+  - name: fraud-scorer
+    route_prefix: /fraud
+    import_path: fraud.app:app
+    runtime_env:
+      pip: [&quot;torch==2.6.0&quot;, &quot;transformers==4.51.0&quot;]
+      env_vars:
+        MODEL_URI: &quot;s3://models/fraud-scorer/17/&quot;
+    deployments:
+      - name: Preprocessor
+        num_replicas: 4
+        ray_actor_options: {num_cpus: 1}
+      - name: Scorer
+        num_replicas: auto
+        max_ongoing_requests: 8
+        autoscaling_config:
+          min_replicas: 2
+          max_replicas: 20
+          target_ongoing_requests: 4
+        ray_actor_options: {num_gpus: 0.5}
+        user_config:
+          decision_threshold: 0.82</code></pre>
+<p><strong>(c) The model weights.</strong> Resolved at replica startup from the registry: MLflow, an S3/GCS/Blob URI, or a registry-backed sidecar download. <strong>Do not bake weights into the image</strong> unless the model is small and the image is per-version. You lose the ability to promote a validated weight set independently of the code, and image size hurts cold start.</p>
+<p>Two versioning mechanics worth knowing:</p>
+<ul>
+<li><strong><code>user_config</code> is hot-reloadable.</strong> Change <code>decision_threshold</code> and Serve calls <code>reconfigure()</code> on each replica without restarting it. Powerful for threshold tuning, and a governance hazard, because it changes model behaviour without an image change. Put <code>user_config</code> under the same change control as code, or you have an unlogged path to altering a validated decision boundary.</li>
+<li><strong><code>runtime_env</code> installs dependencies at replica start.</strong> Convenient in development, a reliability and reproducibility risk in production, since it adds a network dependency at scale-up time and invites resolution drift. <strong>Pin everything, and prefer baked images for production tiers.</strong></li>
+</ul>
+<hr />
+<h3 id="33-stage-7-deployment-and-release-on-a-cloud-platform">3.3 Stage 7: deployment and release on a cloud platform<a class="anchor" href="#33-stage-7-deployment-and-release-on-a-cloud-platform" aria-label="Link to this section">#</a></h3>
+<p>The supported production path is <strong>KubeRay's <code>RayService</code> CRD</strong>, which owns health checking, status reporting, failure recovery, and upgrades.</p>
+<pre class="yaml"><code>apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: fraud-scorer
+spec:
+  serveConfigV2: |
+    applications:
+      - name: fraud-scorer
+        import_path: fraud.app:app
+        route_prefix: /fraud
+        deployments: [...]
+  rayClusterConfig:
+    rayVersion: &quot;2.57.0&quot;
+    headGroupSpec:
+      rayStartParams: {num-cpus: &quot;0&quot;}       # keep app work off the head node
+      template:
+        spec:
+          containers:
+            - name: ray-head
+              image: registry.example.com/fraud-scorer:1.4.2
+    workerGroupSpecs:
+      - groupName: gpu-workers
+        replicas: 2
+        minReplicas: 2
+        maxReplicas: 20
+        template:
+          spec:
+            containers:
+              - name: ray-worker
+                image: registry.example.com/fraud-scorer:1.4.2
+                resources:
+                  limits: {nvidia.com/gpu: 1}</code></pre>
+<p><strong><code>rayStartParams: {num-cpus: "0"}</code> on the head group is a production must.</strong> It advertises zero CPU on the head node so no replicas are scheduled there, leaving the controller and GCS uncontended. A head node fighting replicas for CPU is one of the most common causes of mysterious control-plane flakiness.</p>
+<h4 id="release-strategies">Release strategies</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Mechanism</th>
+<th>Cost</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>In-place update</strong></td>
+<td>Change <code>serveConfigV2</code> only, <code>kubectl apply</code></td>
+<td>None</td>
+<td>Serve reconciles deployments in place. Fine for replica counts, <code>user_config</code>, autoscaling params.</td>
+</tr>
+<tr>
+<td><strong>New-cluster (blue-green)</strong></td>
+<td>Change anything in <code>rayClusterConfig</code> (image, resources)</td>
+<td><strong>~200% of cluster compute</strong> during cutover</td>
+<td>Long the only zero-downtime option. Brutal for GPU fleets, since you briefly need double the accelerators.</td>
+</tr>
+<tr>
+<td><strong>Incremental upgrade</strong></td>
+<td><code>NewClusterWithIncrementalUpgrade</code></td>
+<td>Configurable overhead</td>
+<td><strong>Alpha in KubeRay v1.5.1</strong>, behind the <code>RayServiceIncrementalUpgrade</code> feature gate. New cluster starts at 0% target capacity; KubeRay provisions a Gateway and HTTPRoute at 100% old / 0% new, then shifts traffic progressively, scaling each cluster as it goes.</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>NewCluster</code> remains the <strong>default</strong> <code>upgradeStrategy.type</code>. Options are <code>NewCluster</code>, <code>None</code>, and <code>NewClusterWithIncrementalUpgrade</code>.</p>
+<p>Incremental upgrade configuration, where all four prerequisites are mandatory and the last one surprises people:</p>
+<pre class="yaml"><code>spec:
+  upgradeStrategy:
+    type: NewClusterWithIncrementalUpgrade
+    clusterUpgradeOptions:
+      gatewayClassName: istio        # required
+      stepSizePercent: 10            # required: traffic shifted per interval
+      intervalSeconds: 60            # required: seconds between shifts
+      maxSurgePercent: 100           # default 100: capacity added per step</code></pre>
+<p>Prerequisites: <strong>(1)</strong> Gateway API CRDs, with docs referencing <code>kubernetes-sigs/gateway-api</code> v1.4.0; <strong>(2)</strong> a Gateway API controller such as Istio, Contour, or GKE's, though docs say it is <em>primarily tested with Istio</em>; <strong>(3)</strong> a <code>GatewayClass</code> resource created by a cluster admin; <strong>(4)</strong> <strong>the Ray Autoscaler must be enabled in the <code>RayCluster</code> spec.</strong> Status surfaces <code>targetCapacity</code>, <code>trafficRoutedPercent</code>, and <code>lastTrafficMigratedTime</code> on both <code>activeServiceStatus</code> and <code>pendingServiceStatus</code>.</p>
+<p>Enable the gate at operator install:</p>
+<pre class="bash"><code>helm install kuberay-operator kuberay/kuberay-operator --version v1.6.0 \
+  --set featureGates[0].name=RayServiceIncrementalUpgrade \
+  --set featureGates[0].enabled=true</code></pre>
+<p>The incremental path is what makes Ray Serve economically viable for large GPU deployments, but note the maturity label <em>and</em> the Istio-shaped prerequisite. <strong>Plan for blue-green as the fallback, and size accelerator quota accordingly</strong> <em>(judgment)</em>, because betting on incremental upgrades means betting on an alpha feature gate plus a service mesh you may not run.</p>
+<p>For in-place updates, <code>rolling_update_percentage</code> (default <code>0.2</code>) controls what fraction of replicas Serve replaces at a time.</p>
+<h4 id="canary-ab-and-shadow">Canary, A/B, and shadow</h4>
+<p>Ray Serve has no built-in traffic-splitting primitive. Three approaches:</p>
+<ol type="1">
+<li><strong>At the ingress</strong> (Gateway API, Istio, or a cloud L7 load balancer), splitting across two <code>RayService</code> objects. Cleanest separation, standard tooling, and the platform team already knows it.</li>
+<li><strong>Inside the application:</strong> an ingress deployment holding handles to both champion and challenger, splitting by hash of a stable key. Gives per-request logging of both arms in one place, which is exactly what a challenger evaluation needs. Costs you a code path that must itself be validated.</li>
+<li><strong>Shadow:</strong> ingress fires the challenger call without awaiting it and returns the champion's response. A cheap way to collect challenger predictions on live traffic with no customer exposure. Watch that the fire-and-forget call cannot backpressure the champion path.</li>
+</ol>
+<pre class="python"><code>@serve.deployment
+class Router:
+    def __init__(self, champion, challenger, shadow_only: bool = True):
+        self.champion, self.challenger = champion, challenger
+        self.shadow_only = shadow_only
+
+    async def __call__(self, req):
+        payload = await req.json()
+        champ = self.champion.remote(payload)
+        chal = self.challenger.remote(payload)   # not awaited on the critical path
+        result = await champ
+        asyncio.create_task(self._log_challenger(payload, chal))
+        return result</code></pre>
+<hr />
+<h3 id="34-stage-8-the-serving-runtime-capability-set">3.4 Stage 8: the serving runtime capability set<a class="anchor" href="#34-stage-8-the-serving-runtime-capability-set" aria-label="Link to this section">#</a></h3>
+<h4 id="model-composition">Model composition</h4>
+<p>The differentiator. Deployments call each other through <code>DeploymentHandle</code>, and each scales and is resourced independently.</p>
+<pre class="python"><code>@serve.deployment(ray_actor_options={&quot;num_cpus&quot;: 1}, num_replicas=8)
+class Embedder: ...
+
+@serve.deployment(ray_actor_options={&quot;num_gpus&quot;: 1}, num_replicas=&quot;auto&quot;)
+class Reranker: ...
+
+@serve.deployment
+@serve.ingress(fastapi_app)          # FastAPI for validation and OpenAPI
+class Ingress:
+    def __init__(self, embedder, reranker):
+        self.embedder, self.reranker = embedder, reranker
+
+    @fastapi_app.post(&quot;/search&quot;)
+    async def search(self, q: Query):
+        vec = await self.embedder.remote(q.text)
+        candidates = await self.retrieve(vec)
+        return await self.reranker.remote(q.text, candidates)
+
+app = Ingress.bind(Embedder.bind(), Reranker.bind())</code></pre>
+<p>Contrast with the single-container model server. There, this pipeline is either three network services you operate separately, or one container where the CPU embedder and GPU reranker are forced to scale together.</p>
+<h4 id="dynamic-request-batching">Dynamic request batching</h4>
+<p><code>@serve.batch</code> accumulates concurrent requests up to <code>max_batch_size</code> or <code>batch_wait_timeout_s</code>, whichever fires first, then calls your handler with a list. The classic throughput-for-latency trade, exposed as two knobs:</p>
+<pre class="python"><code>@serve.deployment
+class Scorer:
+    @serve.batch(max_batch_size=32, batch_wait_timeout_s=0.01)
+    async def score(self, inputs: list[dict]) -&gt; list[float]:
+        return self.model(np.stack([featurize(i) for i in inputs])).tolist()</code></pre>
+<p>Serve exposes batch-utilisation metrics. If mean batch size sits far below <code>max_batch_size</code>, your timeout is too short or your traffic too thin for the setting.</p>
+<h4 id="model-multiplexing-many-models-shared-replicas">Model multiplexing: many models, shared replicas</h4>
+<p>For long-tail model fleets, such as per-tenant, per-region, or per-segment variants of one architecture. Replicas cache models with LRU eviction, and the router does affinity routing on the <code>serve_multiplexed_model_id</code> header.</p>
+<pre class="python"><code>@serve.deployment
+class MultiTenantScorer:
+    @serve.multiplexed(max_num_models_per_replica=3)
+    async def get_model(self, model_id: str):
+        return torch.load(f&quot;s3://models/{model_id}/model.pt&quot;, weights_only=False)
+
+    async def __call__(self, request):
+        model = await self.get_model(serve.get_multiplexed_model_id())
+        return model(await request.json())</code></pre>
+<p>Routing detail worth knowing: the router waits up to <code>RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S</code> (default 1s) for a replica that already holds the model. If none is free it falls back to any replica, which loads on demand. <strong>A missing header routes randomly</strong>, so always fail closed on it at ingress rather than silently serving the wrong tenant's model.</p>
+<p>This is the pattern that turns 400 customer-specific models from 400 always-on deployments into a handful of replicas. It is also the pattern with the sharpest governance edge: many models share a process, so isolation is logical, not physical. For regulated per-tenant models, confirm that is acceptable before designing around it.</p>
+<h4 id="fractional-gpus">Fractional GPUs</h4>
+<p><code>num_gpus=0.25</code> lets four replicas share one accelerator. Ray does <strong>not</strong> enforce memory isolation. It is bookkeeping, not partitioning. Two replicas that each think they have 40% of an 80GB card will happily OOM each other. Use it for small models with known, bounded footprints, and use MIG or separate nodes when you need hard isolation.</p>
+<h4 id="async-inference-ray-251">Async inference (Ray 2.51+)</h4>
+<p>For work that outlives an HTTP request: batch summarisation, transcription, video, multi-step agents. Serve consumes from a message broker such as Redis or SQS via <code>@task_consumer</code> with <code>TaskProcessorConfig</code> and <code>@task_handler</code>, so the client submits a task and polls rather than holding a connection. This is the sanctioned answer to inference that takes four minutes against a load balancer that times out at 60 seconds, which previously meant a DIY queue.</p>
+<h4 id="custom-request-routing-ray-251">Custom request routing (Ray 2.51+)</h4>
+<p>Subclass <code>RequestRouter</code>, override <code>choose_replicas()</code>, and attach via <code>request_router_config</code>. Enables cache affinity, session stickiness, latency-aware routing, and priority routing. The LLM stack ships a production implementation, described below.</p>
+<h4 id="custom-and-external-autoscaling-ray-251-and-252-alpha">Custom and external autoscaling (Ray 2.51 and 2.52 alpha)</h4>
+<p><code>record_autoscaling_stats()</code> plus a policy function over <code>Dict[DeploymentId, AutoscalingContext]</code> lets you scale on GPU utilisation, external queue depth, or a schedule instead of request count. <strong>External scaling</strong> (2.52, alpha) exposes an HTTP API for a controller outside Serve to set replica counts, which is the hook for predictive scaling driven by your own forecasting.</p>
+<hr />
+<h3 id="35-llm-serving-specifics">3.5 LLM serving specifics<a class="anchor" href="#35-llm-serving-specifics" aria-label="Link to this section">#</a></h3>
+<p><code>pip install "ray[llm]"</code>. <code>ray.serve.llm</code> is a thin, engine-agnostic layer over vLLM and SGLang.</p>
+<pre class="python"><code>from ray.serve.llm import LLMConfig, build_openai_app
+
+cfg = LLMConfig(
+    model_loading_config={&quot;model_id&quot;: &quot;qwen-32b&quot;, &quot;model_source&quot;: &quot;s3://models/qwen-32b/&quot;},
+    accelerator_type=&quot;H100&quot;,
+    deployment_config={
+        &quot;autoscaling_config&quot;: {&quot;min_replicas&quot;: 1, &quot;max_replicas&quot;: 8,
+                               &quot;target_ongoing_requests&quot;: 32}
+    },
+    engine_kwargs={&quot;tensor_parallel_size&quot;: 4, &quot;max_model_len&quot;: 32768,
+                   &quot;enable_prefix_caching&quot;: True,
+                   &quot;enable_lora&quot;: True, &quot;max_loras&quot;: 4},
+    # max_num_adapters_per_replica must match engine_kwargs[&quot;max_loras&quot;]
+    lora_config={&quot;dynamic_lora_loading_path&quot;: &quot;s3://adapters/&quot;,
+                 &quot;max_num_adapters_per_replica&quot;: 4},
+)
+
+app = build_openai_app({&quot;llm_configs&quot;: [cfg]})   # OpenAI-compatible at /v1</code></pre>
+<p>Capabilities that matter for cost and latency:</p>
+<ul>
+<li><strong>OpenAI-compatible API.</strong> Clients, evals, and gateways that speak OpenAI work unchanged. Cheap insurance against serving-layer lock-in.</li>
+<li><strong>Tensor and pipeline parallelism</strong>, multi-node, for models exceeding one host.</li>
+<li><strong>Multi-LoRA multiplexing.</strong> Many fine-tunes on one base model's weights, with adapter-affinity routing and LRU eviction per replica via <code>max_num_adapters_per_replica</code>, which must equal <code>max_loras</code> in <code>engine_kwargs</code>. For an org with per-domain fine-tunes, this collapses N GPU fleets into one.</li>
+<li><strong><code>PrefixCacheAffinityRouter</code>.</strong> Routes on prefix-tree match to replicas likely holding the KV cache, balanced against queue length. Enabled via <code>request_router_config={"request_router_class": PrefixCacheAffinityRouter}</code>, with tunables <code>imbalanced_threshold</code>, <code>match_rate_threshold</code>, <code>do_eviction</code>, <code>eviction_threshold_chars</code>, <code>eviction_target_chars</code>, and <code>eviction_interval_secs</code>.</li>
+<li><strong>Prefill/decode disaggregation.</strong> Separate replica pools for the compute-bound prefill and memory-bandwidth-bound decode phases, scaled independently. Real gains, real operational complexity. Adopt after you have saturated the simpler levers.</li>
+<li><strong>Data-parallel attention and expert parallelism</strong> for MoE models.</li>
+</ul>
+<p><strong>On the prefix-router numbers.</strong> The Ray docs describe the mechanism (match prefixes when replicas are balanced, fall back to power-of-two-choices when imbalanced) but <strong>publish no performance figure</strong>. The numbers circulating come from an Anyscale blog <em>(vendor-benchmarked)</em>:</p>
+<div class="tw"><table>
+<tbody>
+<tr>
+<td><strong>Claimed</strong></td>
+<td>60% lower TTFT, over 40% better end-to-end throughput, and separately over 2.5x input-token processing throughput</td>
+</tr>
+<tr>
+<td><strong>Model</strong></td>
+<td>DeepSeek-R1-Distill-Qwen-32B, tensor-parallel 4</td>
+</tr>
+<tr>
+<td><strong>Hardware</strong></td>
+<td>64 L4 GPUs (eight 8xL4 machines)</td>
+</tr>
+<tr>
+<td><strong>Runtime</strong></td>
+<td><strong>RayTurbo</strong>, Anyscale's proprietary runtime, not open-source Ray</td>
+</tr>
+<tr>
+<td><strong>Workload</strong></td>
+<td>Synthetic <code>PrefixRepetitionDataset</code>: 512-token shared prefix, 128-token suffix, 128-token output, 32 concurrent per replica</td>
+</tr>
+</tbody>
+</table></div>
+<p>A synthetic dataset engineered for prefix repetition is close to best case, so expect real chat and RAG traffic to land below it. Still likely the highest-leverage single knob for shared-system-prompt workloads <em>(judgment)</em>.</p>
+<p><strong>Version note that changes the performance conversation (Ray 2.56+).</strong> The throughput-optimised path replaces Python-runtime proxy routing with <strong>HAProxy</strong>, streams tokens directly from replica to proxy while bypassing the ingress router on the return path, and uses a <strong>v2 Ray executor backend for vLLM</strong> that moves Ray out of the data plane.</p>
+<p><em>(Vendor-benchmarked.)</em> Google Cloud reports <strong>up to 5x higher throughput and 8x lower latency</strong>, explicitly "compared to previous Ray Serve configurations" and also against "a plain vLLM setup using the Ray executor", on GKE with A4 VMs (NVIDIA HGX B200), eight replicas, using <strong>Gemma 4 E2B</strong>.</p>
+<p><strong>Read the model choice carefully.</strong> The blog states it picked a small, efficient model <em>"to isolate bottlenecks introduced from orchestration and routing."</em> That is a serving-layer measurement, deliberately designed so the model is not the bottleneck. It does <strong>not</strong> imply 5x on a 70B model, where GPU compute dominates and proxy overhead is noise. What it legitimately tells you: the Ray Serve orchestration tax that used to be real has largely been engineered away.</p>
+<p>If your team benchmarked Ray Serve LLM before 2.56 and concluded the Python proxy was a tax, <strong>that measurement is stale.</strong> Rerun it.</p>
+<p>Enable via env vars on head and worker pods:</p>
+<pre class="yaml"><code>env:
+  - {name: RAY_SERVE_ENABLE_HA_PROXY,            value: &quot;1&quot;}
+  - {name: RAY_SERVE_THROUGHPUT_OPTIMIZED,       value: &quot;1&quot;}   # direct gRPC between replicas
+  - {name: RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING, value: &quot;1&quot;}
+  - {name: VLLM_USE_RAY_V2_EXECUTOR_BACKEND,     value: &quot;1&quot;}</code></pre>
+<p>Docs state the gains apply best above roughly 50 RPS, more than 250 concurrent connections per replica, and bursty traffic. Below that, the defaults are fine and simpler.</p>
+<hr />
+<h3 id="36-autoscaling-and-capacity-the-parameters-that-decide-your-bill">3.6 Autoscaling and capacity: the parameters that decide your bill<a class="anchor" href="#36-autoscaling-and-capacity-the-parameters-that-decide-your-bill" aria-label="Link to this section">#</a></h3>
+<p>Two tiers stack here. <strong>Serve's autoscaler</strong>, which manages replicas and runs inside the controller, sits on top of the <strong>Ray autoscaler</strong>, which manages nodes, which in turn sits on top of the <strong>cloud or Kubernetes node autoscaler</strong>. All three latencies add up on a cold scale-up: new replica, then new Ray node, then new VM, then image pull, then model load. For a large LLM image that is minutes, not seconds. Size <code>min_replicas</code> against that reality, not against steady-state cost.</p>
+<p><code>num_replicas="auto"</code> turns on autoscaling with defaults, including <code>max_replicas: 100</code>.</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>target_ongoing_requests</code></td>
+<td><code>2</code></td>
+<td>Steady-state setpoint: average in-flight requests per replica. <strong>The main latency/cost dial.</strong> Lower means more replicas and less queuing. <em>(Default changed from <code>1.0</code> in Ray 2.32.0.)</em></td>
+</tr>
+<tr>
+<td><code>max_ongoing_requests</code></td>
+<td><code>5</code></td>
+<td>Hard per-replica concurrency cap; excess queues at the proxy. Too low throttles throughput; too high causes imbalanced routing and p99 spikes during upscale. <em>(Default changed from <code>100</code> in Ray 2.32.0.)</em></td>
+</tr>
+<tr>
+<td><code>min_replicas</code></td>
+<td><code>1</code></td>
+<td><code>0</code> enables scale-to-zero.</td>
+</tr>
+<tr>
+<td><code>max_replicas</code></td>
+<td><code>1</code></td>
+<td>Your blast-radius and cost ceiling. Note the low default; <code>num_replicas="auto"</code> raises it to <code>100</code>.</td>
+</tr>
+<tr>
+<td><code>initial_replicas</code></td>
+<td><em>(unset, falls back to <code>min_replicas</code>)</em></td>
+<td>Startup count; useful for warm-up.</td>
+</tr>
+<tr>
+<td><code>upscale_delay_s</code></td>
+<td><code>30</code></td>
+<td>Wait before scaling up.</td>
+</tr>
+<tr>
+<td><code>downscale_delay_s</code></td>
+<td><code>600</code></td>
+<td>Wait before scaling down.</td>
+</tr>
+<tr>
+<td><code>downscale_to_zero_delay_s</code></td>
+<td><strong>no documented default</strong></td>
+<td>Separate delay for the 1 to 0 transition. The field is documented; a default is not stated. Set it explicitly if you scale to zero.</td>
+</tr>
+<tr>
+<td><code>upscaling_factor</code></td>
+<td><code>1.0</code></td>
+<td>Gain on upscale decisions.</td>
+</tr>
+<tr>
+<td><code>downscaling_factor</code></td>
+<td><code>1.0</code></td>
+<td>Gain on downscale decisions.</td>
+</tr>
+<tr>
+<td><code>metrics_interval_s</code></td>
+<td><code>10</code></td>
+<td>Replica reporting frequency.</td>
+</tr>
+<tr>
+<td><code>look_back_period_s</code></td>
+<td><code>30</code></td>
+<td>Aggregation window. Longer smooths, shorter reacts.</td>
+</tr>
+<tr>
+<td><code>aggregation_function</code></td>
+<td><code>"mean"</code></td>
+<td>Also <code>"max"</code> (spike-reactive) and <code>"min"</code> (conservative).</td>
+</tr>
+</tbody>
+</table></div>
+<p>Related deployment-level options, which are not part of <code>autoscaling_config</code>: <code>max_queued_requests</code> (default <code>-1</code>, meaning <strong>no limit</strong>, so set it if you want the proxy to shed load rather than queue unboundedly), <code>graceful_shutdown_wait_loop_s</code> (<code>2</code>), <code>graceful_shutdown_timeout_s</code> (<code>20</code>), <code>health_check_period_s</code> (<code>10</code>), <code>health_check_timeout_s</code> (<code>30</code>), and <code>rolling_update_percentage</code> (<code>0.2</code>).</p>
+<p>Documented env vars for autoscaler internals: <code>RAY_SERVE_CONTROL_LOOP_INTERVAL_S</code> (<code>0.1</code>), <code>RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER</code> (<code>false</code>), <code>RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S</code> (<code>10.0</code>), and <code>RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S</code> (<code>10.0</code>).</p>
+<p><strong>Tuning heuristics, which are judgment rather than documented recommendations.</strong> The Ray docs give the fields and semantics but do <em>not</em> publish per-workload numeric recipes. Treat everything in this block as a starting hypothesis to benchmark:</p>
+<ul>
+<li>Keep <code>max_ongoing_requests</code> meaningfully above <code>target_ongoing_requests</code>, starting around 1.5 to 2x, so the setpoint is reachable before the cap throttles.</li>
+<li>For heavyweight models processing one request at a time, a low <code>target_ongoing_requests</code> near 1 keeps queuing off the critical path. For vLLM-backed LLM replicas, which batch internally, the useful setpoint is far higher, in the tens of concurrent requests, because the engine <em>wants</em> a full batch.</li>
+<li><code>metrics_interval_s</code> should be at or below <code>upscale_delay_s</code>, or the autoscaler is deciding on stale data.</li>
+<li>Oscillating replica counts call for lower scaling factors and a <code>look_back_period_s</code> aligned to your delays. Burst latency calls for a lower <code>upscale_delay_s</code> and a higher <code>upscaling_factor</code>.</li>
+</ul>
+<p><strong>On composition.</strong> The docs' model-composition example uses <code>target_ongoing_requests: 20</code> on the Driver deployment, versus a much lower value on the model deployments, but the page presents this as an example, <strong>not</strong> as a stated general recommendation. The underlying logic is sound and worth adopting, since an I/O-bound orchestration layer sustains far more concurrency than a compute-bound model replica, but benchmark it rather than citing it as doctrine. Getting it backwards produces the pathology where the gateway scales out, the models stay pinned, and all you have built is a bigger queue.</p>
+<hr />
+<h3 id="37-stage-9-monitoring">3.7 Stage 9: monitoring<a class="anchor" href="#37-stage-9-monitoring" aria-label="Link to this section">#</a></h3>
+<p>Ray Serve gives you strong <strong>operational</strong> telemetry and <strong>zero model-quality</strong> telemetry. Both halves need to be in the monitoring plan, and only one comes free.</p>
+<p><strong>Comes free:</strong></p>
+<ul>
+<li><strong>Ray Dashboard</strong> on port 8265, with a Serve view covering applications, deployments, replicas, and logs.</li>
+<li><strong>CLI:</strong> <code>serve status</code> for health and replica states, <code>serve config</code> for goal state. Both belong in your readiness probes and runbooks.</li>
+<li><strong>Logs</strong> at <code>/tmp/ray/session_latest/logs/serve/</code> plus stderr, via the <code>ray.serve</code> Python logger. Set <code>LoggingConfig(encoding="JSON")</code> for structured logs, rotate with <code>RAY_ROTATION_MAX_BYTES</code> and <code>RAY_ROTATION_BACKUP_COUNT</code>, disable access logs per deployment with <code>enable_access_log=False</code>, and propagate <code>X-Request-ID</code> for end-to-end correlation. Ship to Loki, CloudWatch, or Log Analytics with the usual DaemonSet collector.</li>
+<li><strong>Prometheus metrics</strong> across proxy (requests, latency histograms, errors), router (queue length, routing delay), replica (processing latency, throughput, health checks), autoscaler (target replicas, policy time), and batching (batch size and utilisation). Latency histogram buckets are tunable via <code>RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS</code>, so <strong>set these to your SLO boundaries</strong> or your p99 panel is interpolation fiction. Prebuilt Grafana dashboards ship for Serve and Serve LLM.</li>
+<li><strong>Custom metrics</strong> via Ray's counter, gauge, and histogram API, auto-tagged with deployment and replica.</li>
+<li><strong>Event-loop monitoring</strong>, which flags scheduling latency caused by blocking code in an async handler. Genuinely useful, since sync CPU work inside <code>async def</code> is the most common Ray Serve performance bug.</li>
+<li><strong>Memory profiling</strong> with <code>RAY_SERVE_ENABLE_MEMORY_PROFILING=1</code> and memray, for the leak that shows up on day nine.</li>
+</ul>
+<p><strong>You must build:</strong></p>
+<ul>
+<li><strong>Prediction logging:</strong> inputs, outputs, model version, request ID, and latency, written to a durable store. Do this in the ingress deployment, asynchronously, never on the critical path. This is the substrate for everything below.</li>
+<li><strong>Drift:</strong> input distribution against the validation baseline, and prediction distribution over time.</li>
+<li><strong>Performance against ground truth:</strong> the delayed join, where the label arrives days or weeks later. Entirely outside Ray Serve.</li>
+<li><strong>Alerting on model metrics:</strong> thresholds that trip a review, not just a pager.</li>
+<li><strong>Threshold-change audit:</strong> every <code>user_config</code> reconfigure, since those change decisions without a deploy.</li>
+</ul>
+<p>That gap is not a criticism of Ray Serve. It is the boundary the docs advertise. But an MDLC that assumes "we have Ray Serve, therefore we have model monitoring" will fail its first validation review.</p>
+<h2 id="4-cloud-reference-architecture">4. Cloud reference architecture<a class="anchor" href="#4-cloud-reference-architecture" aria-label="Link to this section">#</a></h2>
+<p>Target: managed Kubernetes on any of the three hyperscalers, the KubeRay operator, and one <code>RayService</code> per model application.</p>
+<pre><code>                       ┌─────────────────────────────────────┐
+  clients ──► WAF/CDN ─►│  Cloud L7 LB / Gateway API + Istio │  authn/z, rate limit, canary split
+                       └──────────────┬──────────────────────┘
+                                      │
+             ┌────────────────────────▼──────────────────────────┐
+             │  Managed Kubernetes (EKS / GKE / AKS)             │
+             │  ┌────────────────────────────────────────────┐   │
+             │  │ KubeRay operator  (own node pool, tainted) │   │
+             │  └────────────────────────────────────────────┘   │
+             │  ┌── RayService: fraud-scorer ────────────────┐    │
+             │  │  head pod   (CPU pool, num-cpus=0)         │    │
+             │  │    controller · GCS · dashboard · proxy    │    │
+             │  │  worker group: cpu-preproc  (CPU pool)     │    │
+             │  │  worker group: gpu-model    (GPU pool)     │    │
+             │  └────────────────────────────────────────────┘    │
+             │  ┌── RayService: rag-assistant ───────────────┐    │
+             │  │  ... vLLM replicas, H100 pool             │    │
+             │  └────────────────────────────────────────────┘    │
+             └──────┬───────────────┬────────────────┬───────────┘
+                    │               │                │
+           object store        Prometheus/       model registry
+        (weights, logs)      Grafana/Loki      (MLflow or equiv)</code></pre>
+<p>Design decisions to make explicitly:</p>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Decision</th>
+<th>Recommendation</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>One big Ray cluster or one per app?</td>
+<td><strong>One <code>RayService</code> per application</strong>, or per tightly-coupled family</td>
+<td>Blast radius, independent upgrade cadence, clean cost attribution, per-model quota. A shared cluster couples unrelated release schedules, and one bad replica can starve the shared GCS.</td>
+</tr>
+<tr>
+<td>Head node placement</td>
+<td>Dedicated CPU node pool, <code>num-cpus: "0"</code></td>
+<td>Documented: <em>"setting <code>num-cpus:"0"</code> for the Ray head pod will prevent Ray workloads with non-zero CPU requirements from being scheduled on the head."</em> The control plane must not contend with inference.</td>
+</tr>
+<tr>
+<td>Pod-to-node ratio</td>
+<td>One large Ray pod per Kubernetes node</td>
+<td>Documented: <em>"It's ideal to size each Ray pod to take up the entire Kubernetes node."</em> Better object-store usage, less intra-cluster communication overhead.</td>
+</tr>
+<tr>
+<td>GPU node pools</td>
+<td>Separate pool per accelerator SKU, with taints and <code>accelerator_type</code> in config</td>
+<td>Prevents a CPU deployment landing on an H100 node.</td>
+</tr>
+<tr>
+<td>Node scaling</td>
+<td>Cluster Autoscaler, <strong>Karpenter</strong> on EKS, or node auto-provisioning on GKE</td>
+<td>Ray's autoscaler asks for nodes; something must supply them. Spot or preemptible for stateless replicas, on-demand for the head node. <strong>Never put the head on spot.</strong></td>
+</tr>
+<tr>
+<td>Ingress</td>
+<td>Gateway API</td>
+<td>Required by KubeRay incremental upgrades, and also where canary splitting, authn, and rate limiting belong.</td>
+</tr>
+<tr>
+<td>Weights delivery</td>
+<td>Object store plus a node-local cache, or a read-only shared volume</td>
+<td>Model load dominates cold start. Caching on the node turns minutes into seconds on scale-up.</td>
+</tr>
+<tr>
+<td>Config delivery</td>
+<td>GitOps (Argo or Flux) on the <code>RayService</code> manifest</td>
+<td>Makes the deployed version auditable, a hard requirement for stage 5 evidence.</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Platform-specific notes</strong></p>
+<ul>
+<li><strong>GKE:</strong> the most mature integration. Ray Operator add-on, TPU as well as GPU support, a published multi-cluster Ray Serve plus GKE Inference Gateway pattern, and the 2.56 throughput work was co-developed and benchmarked here. Anyscale's RayTurbo runtime is being integrated with GKE.</li>
+<li><strong>EKS:</strong> KubeRay plus Karpenter is well-trodden, and AWS's Data-on-EKS blueprints include Ray patterns. No managed Ray add-on, so you own the operator lifecycle.</li>
+<li><strong>AKS:</strong> ⚠️ <strong>low confidence.</strong> There are reports of managed Ray via Anyscale on Azure announced at Build 2026, but the source found here was secondary rather than Microsoft or Anyscale directly. <strong>Verify before this influences any decision.</strong> The baseline assumption should be self-managed KubeRay on AKS, the same as EKS.</li>
+<li><strong>Anyscale</strong>, the managed Ray offering from the Ray creators, runs on your EKS, GKE, AKS, or self-hosted Kubernetes, and adds RayTurbo, a managed control plane, and operational tooling. This is the build-versus-buy axis.</li>
+<li><strong>Vertex AI and SageMaker</strong> have Ray-on-platform offerings that lean toward training and tuning. For <em>serving</em>, the native managed endpoint is the more natural comparison.</li>
+</ul>
+<h2 id="5-failure-modes-and-operational-gotchas">5. Failure modes and operational gotchas<a class="anchor" href="#5-failure-modes-and-operational-gotchas" aria-label="Link to this section">#</a></h2>
+<p>Ranked by how often they bite in practice.</p>
+<ol type="1">
+<li><strong>Blocking code in an <code>async def</code> handler.</strong> Stalls the replica's event loop, tanks throughput, and looks like a model performance problem. Use the event-loop-latency metric to catch it, then push sync work to threads or make the handler sync so Serve manages concurrency.</li>
+<li><strong>Model load on the critical path of scale-up.</strong> Every new replica pays it. Mitigate with a node-local weight cache, baked images for small models, warm <code>min_replicas</code>, and a <code>downscale_to_zero_delay_s</code> that is not punitive.</li>
+<li><strong><code>max_ongoing_requests</code> mis-set.</strong> Too low and throughput collapses with idle GPUs. Too high and you get routing imbalance and p99 blowouts. Benchmark it rather than guessing.</li>
+<li><strong>Blue-green GPU cost shock.</strong> A <code>rayClusterConfig</code> change means a second full cluster. Discovering this at promotion time, against a GPU quota, is a bad day. Either get the incremental-upgrade gate working in a lower environment first, or hold headroom.</li>
+<li><strong>Head-node contention and GCS pressure.</strong> Fixed by <code>num-cpus: "0"</code> and a dedicated pool. Under-provisioning the head node manifests as random control-plane timeouts.</li>
+<li><strong><code>runtime_env</code> in production.</strong> Dependency install at replica start adds a network dependency on your scale-up path and a reproducibility hole. Bake images.</li>
+<li><strong>In-flight request loss on <em>crash</em>, not on planned shutdown.</strong> Planned replica removal during downscale or rolling update drains, using <code>graceful_shutdown_wait_loop_s</code> (default 2s) then <code>graceful_shutdown_timeout_s</code> (default 20s) before the actor is killed. Loss occurs when a replica <em>crashes</em>, or when a request outlives the graceful timeout. <strong>If your p99 exceeds 20s, raise <code>graceful_shutdown_timeout_s</code> or every downscale event truncates live requests.</strong> Pair with idempotent handlers and client retries with jitter.</li>
+<li><strong>Fractional-GPU OOM.</strong> Ray's accounting is advisory. Bound the footprints or use MIG.</li>
+<li><strong>Missing multiplex header.</strong> Random routing, wrong model, and silent. Validate at ingress.</li>
+<li><strong>Version-skew debugging.</strong> Ray, KubeRay, vLLM, CUDA, and driver versions are a tightly coupled matrix. Pin the whole set, upgrade deliberately, and keep a known-good tuple documented.</li>
+</ol>
+<h2 id="6-what-ray-serve-does-not-give-you">6. What Ray Serve does not give you<a class="anchor" href="#6-what-ray-serve-does-not-give-you" aria-label="Link to this section">#</a></h2>
+<p>Worth stating plainly in any adoption proposal, because each line is a workstream someone must own:</p>
+<ul>
+<li>Model registry, lineage, or artefact governance.</li>
+<li>Model-quality monitoring: drift, ground-truth join, performance decay.</li>
+<li>Approval workflow, sign-off records, model risk documentation.</li>
+<li>Feature store, or online/offline feature consistency guarantees.</li>
+<li>Built-in authn/authz, quota, or per-tenant rate limiting. Do it at the gateway.</li>
+<li>Traffic splitting as a first-class primitive. Gateway or app-level code.</li>
+<li>Explainability, bias, or fairness tooling.</li>
+<li>A UI for non-engineers. The Ray Dashboard is an operator's tool.</li>
+</ul>
+<p>Pair Ray Serve with a registry such as MLflow or a cloud-native equivalent, GitOps for deploys, Prometheus/Grafana/Loki for ops telemetry, a dedicated ML-monitoring layer for model quality, and your existing API gateway for the edge.</p>
+<h2 id="7-suggested-adoption-path">7. Suggested adoption path<a class="anchor" href="#7-suggested-adoption-path" aria-label="Link to this section">#</a></h2>
+<div class="tw"><table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Goal</th>
+<th>Exit criteria</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>0. Spike (1–2 wks)</strong></td>
+<td>One real model, <code>serve run</code> locally, then KubeRay in a dev cluster</td>
+<td>Endpoint serving; the team can read Ray logs and the dashboard</td>
+</tr>
+<tr>
+<td><strong>1. One production workload</strong></td>
+<td>The workload that most needs composition or GPU efficiency, not the easiest one</td>
+<td>SLO met; Prometheus and Grafana wired; runbook written; rollback rehearsed</td>
+</tr>
+<tr>
+<td><strong>2. Release engineering</strong></td>
+<td>GitOps on <code>RayService</code>, image pipeline, promotion gates, canary at the gateway, incremental-upgrade gate tested in staging</td>
+<td>A model version promoted dev to staging to prod with an audit trail and no manual <code>kubectl</code></td>
+</tr>
+<tr>
+<td><strong>3. Monitoring gap closed</strong></td>
+<td>Prediction logging, drift, ground-truth join, model-metric alerting</td>
+<td>Passes a mock validation review</td>
+</tr>
+<tr>
+<td><strong>4. Scale out</strong></td>
+<td>Multiplexing for the long tail, the LLM stack with the 2.56 throughput path, autoscaling tuned per workload</td>
+<td>GPU utilisation and cost per 1k inferences trending the right way</td>
+</tr>
+</tbody>
+</table></div>
+<p>The fastest way to get this wrong: adopt Ray Serve for a fleet of trivial single-model endpoints, inherit a distributed-systems operational burden, and never use the composition and GPU-efficiency features that were the actual reason to be here.</p>
+<h2 id="8-questions-to-answer-before-adopting">8. Questions to answer before adopting<a class="anchor" href="#8-questions-to-answer-before-adopting" aria-label="Link to this section">#</a></h2>
+<p>Answers to these change the decision more than any feature comparison will:</p>
+<ol type="1">
+<li><strong>Workload shape.</strong> How many endpoints, single-model or compositional, and what share is LLM versus classical?</li>
+<li><strong>Accelerators.</strong> Do you own GPU capacity and reservations, or would you be buying managed inference per token? This is mostly a procurement fact, and it dominates the economics.</li>
+<li><strong>Traffic profile.</strong> Steady or bursty? Is scale-to-zero relevant? What are the latency SLOs?</li>
+<li><strong>Regulatory posture.</strong> Full model risk management with independent validation and documented sign-off, or lighter touch? Determines how much of <a href="#6-what-ray-serve-does-not-give-you">§6</a> is mandatory.</li>
+<li><strong>Team.</strong> Is there a platform team that can own a Ray cluster, or does the ML team operate its own serving?</li>
+<li><strong>Existing estate.</strong> Already on Kubernetes? Already running KServe or vendor endpoints? Migration cost is a first-class input.</li>
+<li><strong>Multi-tenancy isolation.</strong> Is logical isolation via multiplexing and shared replicas acceptable, or is physical isolation required per tenant or model?</li>
+</ol>
+<h2 id="9-scope-and-limitations">9. Scope and limitations<a class="anchor" href="#9-scope-and-limitations" aria-label="Link to this section">#</a></h2>
+<p>Every figure and default in this document was verified against primary sources on 2026-08-13: Ray and KubeRay documentation pages, package registries, and named vendor benchmarks. Where a claim rests on a vendor benchmark rather than documentation, the benchmark conditions are stated inline so you can judge how far it transfers. Where a recommendation is engineering judgment rather than documented guidance, it is marked <em>(judgment)</em>.</p>
+<p>Two specific caveats worth repeating, because both are easy to over-read:</p>
+<ul>
+<li><strong>The Ray docs publish no per-workload numeric tuning recipes.</strong> The autoscaling parameter table in <a href="#36-autoscaling-and-capacity-the-parameters-that-decide-your-bill">§3.6</a> gives verified defaults and semantics. The tuning heuristics beneath it are judgment, and are starting hypotheses to benchmark rather than settled guidance.</li>
+<li><strong>Vendor benchmark conditions matter more than the headline numbers.</strong> The GKE 5x/8x figures used a deliberately small model to isolate orchestration overhead. The prefix-routing figures ran on Anyscale's proprietary RayTurbo runtime against a synthetic prefix-repetition dataset. Both are informative; neither transfers unmodified to a large model on stock Ray.</li>
+</ul>
+<p><strong>Nothing in this document has been executed.</strong> Every claim is documentation-derived or vendor-published:</p>
+<ol type="1">
+<li><strong>No hands-on validation.</strong> No cluster stood up, no model served, no number reproduced. The autoscaling heuristics in <a href="#36-autoscaling-and-capacity-the-parameters-that-decide-your-bill">§3.6</a> are untested hypotheses.</li>
+<li><strong>Cold-start latency is unquantified.</strong> Repeatedly called the dominant scale-up cost, never measured. Needs a real image and real weights on a specific accelerator SKU.</li>
+<li><strong>Cost modelling is qualitative.</strong> Levers described, but no cost-per-1k-inferences model.</li>
+<li><strong>Security and multi-tenancy get one table row.</strong> Authn/z, network policy, secret handling for weight access, and per-tenant isolation need their own design. KubeRay v1.6.0 reportedly adds Ray token authentication via Kubernetes RBAC, which is worth investigating and is unverified here.</li>
+<li><strong>Async inference is doc-summary only.</strong> The async-inference reference page was not fetched; the <code>@task_consumer</code>, <code>TaskProcessorConfig</code>, and <code>@task_handler</code> API shape comes from an Anyscale blog rather than the API docs.</li>
+<li><strong>Ray Serve without Kubernetes</strong> is dismissed in one line and not seriously evaluated.</li>
+</ol>
+<h2 id="10-sources">10. Sources<a class="anchor" href="#10-sources" aria-label="Link to this section">#</a></h2>
+<p>Fetched 2026-08-12, re-verified 2026-08-13.</p>
+<p><strong>Ray and Ray Serve documentation</strong></p>
+<ol type="1">
+<li><strong>Ray Serve overview</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/index.html">https://docs.ray.io/en/latest/serve/index.html</a></li>
+<li><strong>Ray Serve architecture</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/architecture.html">https://docs.ray.io/en/latest/serve/architecture.html</a></li>
+<li><strong>Production guide</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/production-guide/index.html">https://docs.ray.io/en/latest/serve/production-guide/index.html</a></li>
+<li><strong>Ray Serve autoscaling</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/autoscaling-guide.html">https://docs.ray.io/en/latest/serve/autoscaling-guide.html</a></li>
+<li><strong>Advanced Ray Serve autoscaling</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/advanced-guides/advanced-autoscaling.html">https://docs.ray.io/en/latest/serve/advanced-guides/advanced-autoscaling.html</a></li>
+<li><strong>Monitoring Ray Serve</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/monitoring.html">https://docs.ray.io/en/latest/serve/monitoring.html</a></li>
+<li><strong>Model multiplexing</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/model-multiplexing.html">https://docs.ray.io/en/latest/serve/model-multiplexing.html</a></li>
+<li><strong>Serve fault tolerance</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/production-guide/fault-tolerance.html">https://docs.ray.io/en/latest/serve/production-guide/fault-tolerance.html</a></li>
+<li><strong><code>@serve.deployment</code> API reference</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/api/doc/ray.serve.deployment_decorator.html">https://docs.ray.io/en/latest/serve/api/doc/ray.serve.deployment_decorator.html</a></li>
+</ol>
+<p><strong>Ray Serve LLM</strong></p>
+<ol start="10" type="1">
+<li><strong>Serving LLMs with Ray Serve LLM</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/llm/index.html">https://docs.ray.io/en/latest/serve/llm/index.html</a></li>
+<li><strong>Ray Serve LLM architecture overview</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/llm/architecture/overview.html">https://docs.ray.io/en/latest/serve/llm/architecture/overview.html</a></li>
+<li><strong>Prefix-aware request routing</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/llm/user-guides/prefix-aware-routing.html">https://docs.ray.io/en/latest/serve/llm/user-guides/prefix-aware-routing.html</a></li>
+<li><strong>LLM request routing policies</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/llm/architecture/routing-policies.html">https://docs.ray.io/en/latest/serve/llm/architecture/routing-policies.html</a></li>
+<li><strong>Multi-LoRA deployment</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/llm/user-guides/multi-lora.html">https://docs.ray.io/en/latest/serve/llm/user-guides/multi-lora.html</a></li>
+<li><strong><code>ray.serve.llm.LoraConfig</code> API</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LoraConfig.html">https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LoraConfig.html</a></li>
+</ol>
+<p><strong>KubeRay and Kubernetes</strong></p>
+<ol start="16" type="1">
+<li><strong>Deploy Ray Serve applications (RayService)</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/rayservice.html">https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/rayservice.html</a></li>
+<li><strong>RayService zero-downtime incremental upgrades</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/rayservice-incremental-upgrade.html">https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/rayservice-incremental-upgrade.html</a></li>
+<li><strong>RayService troubleshooting</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/cluster/kubernetes/troubleshooting/rayservice-troubleshooting.html">https://docs.ray.io/en/latest/cluster/kubernetes/troubleshooting/rayservice-troubleshooting.html</a></li>
+<li><strong>High-throughput Ray Serve with KubeRay</strong>. Ray docs. <a href="https://docs.ray.io/en/master/cluster/kubernetes/user-guides/kuberay-serve-high-throughput.html">https://docs.ray.io/en/master/cluster/kubernetes/user-guides/kuberay-serve-high-throughput.html</a></li>
+<li><strong>RayCluster configuration guide</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html">https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html</a></li>
+<li><strong>Ray on Kubernetes</strong>. Ray docs. <a href="https://docs.ray.io/en/latest/cluster/kubernetes/index.html">https://docs.ray.io/en/latest/cluster/kubernetes/index.html</a></li>
+<li><strong>KubeRay documentation</strong>. KubeRay. <a href="https://ray-project.github.io/kuberay/">https://ray-project.github.io/kuberay/</a></li>
+<li><strong>KubeRay releases</strong>. GitHub. <a href="https://github.com/ray-project/kuberay/releases">https://github.com/ray-project/kuberay/releases</a></li>
+</ol>
+<p><strong>Anyscale</strong></p>
+<ol start="24" type="1">
+<li><strong>Introducing KubeRay v1.5</strong>. Anyscale blog. <a href="https://www.anyscale.com/blog/kuberay-v1-5">https://www.anyscale.com/blog/kuberay-v1-5</a></li>
+<li><strong>Ray Serve: async inference, custom request routing, custom autoscaling</strong>. Anyscale blog. <a href="https://www.anyscale.com/blog/ray-serve-autoscaling-async-inference-custom-routing">https://www.anyscale.com/blog/ray-serve-autoscaling-async-inference-custom-routing</a></li>
+<li><strong>Reduce LLM inference latency by 60% with custom request routing</strong>. Anyscale blog. <a href="https://www.anyscale.com/blog/ray-serve-faster-first-token-custom-routing">https://www.anyscale.com/blog/ray-serve-faster-first-token-custom-routing</a></li>
+<li><strong>Ray Serve LLM: wide-EP and disaggregated serving with vLLM</strong>. Anyscale blog. <a href="https://www.anyscale.com/blog/ray-serve-llm-anyscale-apis-wide-ep-disaggregated-serving-vllm">https://www.anyscale.com/blog/ray-serve-llm-anyscale-apis-wide-ep-disaggregated-serving-vllm</a></li>
+<li><strong>AI agents on Ray Serve: single to multi-agent architecture</strong>. Anyscale blog. <a href="https://www.anyscale.com/blog/ai-agents-on-ray-serve-single-to-multi-agent-architecture">https://www.anyscale.com/blog/ai-agents-on-ray-serve-single-to-multi-agent-architecture</a></li>
+<li><strong>Benchmarking with Ray Serve LLM</strong>. Anyscale docs. <a href="https://docs.anyscale.com/llm/serving/benchmarking/benchmarking-guide">https://docs.anyscale.com/llm/serving/benchmarking/benchmarking-guide</a></li>
+</ol>
+<p><strong>Cloud platforms</strong></p>
+<ol start="30" type="1">
+<li><strong>Improving Ray Serve LLM on GKE throughput and latency</strong>. Google Cloud blog. <a href="https://cloud.google.com/blog/products/containers-kubernetes/improving-ray-serve-llm-on-gke-throughput-latency">https://cloud.google.com/blog/products/containers-kubernetes/improving-ray-serve-llm-on-gke-throughput-latency</a></li>
+<li><strong>Ray on GKE: new features for AI scheduling and scaling</strong>. Google Cloud blog. <a href="https://cloud.google.com/blog/products/containers-kubernetes/ray-on-gke-new-features-for-ai-scheduling-and-scaling">https://cloud.google.com/blog/products/containers-kubernetes/ray-on-gke-new-features-for-ai-scheduling-and-scaling</a></li>
+<li><strong>Partnering with Anyscale to integrate RayTurbo with GKE</strong>. Google Cloud blog. <a href="https://cloud.google.com/blog/products/containers-kubernetes/partnering-with-anyscale-to-integrate-rayturbo-with-gke">https://cloud.google.com/blog/products/containers-kubernetes/partnering-with-anyscale-to-integrate-rayturbo-with-gke</a></li>
+</ol>
+<p><strong>Package registry</strong></p>
+<ol class="sources" type="1">
+<li id="src-1"><strong>ray on PyPI</strong>, for version and release-date verification. <a href="https://pypi.org/project/ray/">https://pypi.org/project/ray/</a></li>
+</ol>
+<hr />
+<p><em>Published as open research. Corrections and counter-evidence welcome via issues.</em></p>
+
+    <footer><p>Source: <a href="https://github.com/byte-ish/ray-serve-inference-mdlc">github.com/byte-ish/ray-serve-inference-mdlc</a></p></footer>
+  </main>
+</div>
+<a class="totop" href="#" aria-label="Back to top">&uarr; Top</a>
+<script>
+(function(){
+  var links={},heads=[];
+  Array.prototype.forEach.call(document.querySelectorAll('nav.toc a'),function(a){
+    var id=a.getAttribute('href').slice(1),el=document.getElementById(id);
+    if(el){links[id]=a;heads.push(el);}
+  });
+  if(heads.length&&'IntersectionObserver' in window){
+    var active=null;
+    var obs=new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(!en.isIntersecting)return;
+        var a=links[en.target.id];
+        if(!a||a===active)return;
+        if(active)active.classList.remove('active');
+        a.classList.add('active');active=a;
+        if(a.scrollIntoView)a.scrollIntoView({block:'nearest'});
+      });
+    },{rootMargin:'0px 0px -78% 0px',threshold:0});
+    heads.forEach(function(h){obs.observe(h);});
+  }
+  var btn=document.querySelector('.totop');
+  if(btn){
+    var tick=function(){btn.classList.toggle('on',window.scrollY>700);};
+    window.addEventListener('scroll',tick,{passive:true});tick();
+  }
+})();
+</script>
+</body>
+</html>
